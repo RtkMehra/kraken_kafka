@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Market Data Test</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .up {
+            color: green;
+        }
+
+        .down {
+            color: red;
+        }
+
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .connected {
+            background-color: #dff0d8;
+        }
+
+        .disconnected {
+            background-color: #f2dede;
+        }
+
+        button {
+            margin: 5px;
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="status" class="status">Connecting...</div>
+    <h1>Market Data Feed</h1>
+    <div>
+        <button onclick="subscribe(['BTCUSD'])">Subscribe to BTC</button>
+        <button onclick="subscribe(['ETHUSD'])">Subscribe to ETH</button>
+        <button onclick="subscribe(['BTCUSD', 'ETHUSD'])">Subscribe to Both</button>
+        <button onclick="unsubscribeAll()">Unsubscribe All</button>
+    </div>
+    <table id="marketData">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Bid</th>
+                <th>Ask</th>
+                <th>Time</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        const socket = io('ws://localhost:8080', {
+            transports: ['websocket'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+
+        let lastPrices = {};
+        let activeSubscriptions = new Set();
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            updateStatus('Connected', true);
+            // Resubscribe to previous subscriptions
+            if (activeSubscriptions.size > 0) {
+                subscribe(Array.from(activeSubscriptions));
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            updateStatus('Disconnected', false);
+        });
+
+        socket.on('connected', (data) => {
+            console.log('Connection acknowledged, socket ID:', data.id);
+        });
+
+        socket.on('subscribed', (symbols) => {
+            console.log('Subscription confirmed for:', symbols);
+            symbols.forEach(symbol => activeSubscriptions.add(symbol));
+        });
+
+        socket.on('unsubscribed', (symbols) => {
+            console.log('Unsubscription confirmed for:', symbols);
+            symbols.forEach(symbol => activeSubscriptions.delete(symbol));
+        });
+
+        socket.on('marketData', (data) => {
+            console.log('Received:', data);
+            updateTable(data);
+        });
+
+        function subscribe(symbols) {
+            socket.emit('subscribe', symbols);
+            console.log('Subscribing to:', symbols);
+        }
+
+        function unsubscribeAll() {
+            if (activeSubscriptions.size > 0) {
+                const symbols = Array.from(activeSubscriptions);
+                socket.emit('unsubscribe', symbols);
+                console.log('Unsubscribing from all');
+            }
+        }
+
+        function updateStatus(message, connected) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${connected ? 'connected' : 'disconnected'}`;
+        }
+
+        function updateTable(data) {
+            const tbody = document.querySelector('#marketData tbody');
+            const row = document.createElement('tr');
+
+            const lastPrice = lastPrices[data.symbol];
+            const priceChanged = lastPrice && lastPrice.bid !== data.bid;
+            const priceDirection = lastPrice ? (data.bid > lastPrice.bid ? 'up' : 'down') : '';
+
+            row.innerHTML = `
+                <td>${data.symbol}</td>
+                <td class="${priceDirection}">${data.bid}</td>
+                <td class="${priceDirection}">${data.ask}</td>
+                <td>${new Date(data.timestamp).toLocaleTimeString()}</td>
+            `;
+
+            if (tbody.children.length > 20) {
+                tbody.removeChild(tbody.lastChild);
+            }
+
+            tbody.insertBefore(row, tbody.firstChild);
+            lastPrices[data.symbol] = data;
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Market Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .btc {
+            background-color: #fff9c4;
+        }
+        .eth {
+            background-color: #e3f2fd;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.8em;
+        }
+        .price {
+            font-weight: bold;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Crypto Market Data</h1>
+    <div id="status" class="disconnected">Disconnected</div>
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <button id="clear">Clear Messages</button>
+    
+    <h2>Live Market Data</h2>
+    <div id="messages"></div>
+
+    <script>
+        let socket;
+        const statusEl = document.getElementById('status');
+        const messagesEl = document.getElementById('messages');
+        const connectBtn = document.getElementById('connect');
+        const disconnectBtn = document.getElementById('disconnect');
+        const clearBtn = document.getElementById('clear');
+
+        function updateStatus(connected) {
+            if (connected) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function addMessage(data) {
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${data.symbol.toLowerCase().includes('btc') ? 'btc' : 'eth'}`;
+            
+            const time = new Date(data.timestamp).toLocaleTimeString();
+            
+            messageEl.innerHTML = `
+                <div class="timestamp">${time}</div>
+                <div><strong>${data.symbol}</strong> - Bid: <span class="price">$${data.bid.toFixed(2)}</span> Ask: <span class="price">$${data.ask.toFixed(2)}</span></div>
+            `;
+            
+            messagesEl.prepend(messageEl);
+            
+            // Limit the number of messages to prevent browser slowdown
+            if (messagesEl.children.length > 100) {
+                messagesEl.removeChild(messagesEl.lastChild);
+            }
+        }
+
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = function() {
+                updateStatus(true);
+                console.log('WebSocket connection established');
+            };
+            
+            socket.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // Handle system messages
+                    if (data.type === 'system' || data.type === 'info') {
+                        console.log('System message:', data.message);
+                        return;
+                    }
+                    
+                    // Handle market data
+                    if (data.symbol && data.bid && data.ask) {
+                        addMessage(data);
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                }
+            };
+            
+            socket.onclose = function() {
+                updateStatus(false);
+                console.log('WebSocket connection closed');
+            };
+            
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateStatus(false);
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+        }
+
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        clearBtn.addEventListener('click', () => {
+            messagesEl.innerHTML = '';
+        });
+
+        // Auto-connect if the page is loaded
+        if (window.location.protocol !== 'file:') {
+            connect();
+        }
+    </script>
+</body>
+</html>
