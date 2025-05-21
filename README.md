@@ -52,7 +52,7 @@ The application can be configured using environment variables or a `.env` file:
 # Server configuration
 WS_PORT=8080
 KAFKA_BROKER=localhost:9092
-KAFKA_TOPIC=quotes.crypto
+KAFKA_TOPICS=quotes.crypto
 KAFKA_CLIENT_ID=market-data-service
 KAFKA_CONSUMER_GROUP=ws-consumers
 

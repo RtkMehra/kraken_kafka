@@ -116,7 +116,7 @@ class KrakenClient {
       const marketData = this.parseTickerData(message);
       if (marketData) {
         // Send to Kafka only
-        sendToKafka(config.KAFKA_TOPIC, marketData)
+        sendToKafka(config.KAFKA_TOPICS, marketData)
           .catch(error => logger.error('Kafka send failed:', error));
 
         perfMonitor.trackMessage(startTime);

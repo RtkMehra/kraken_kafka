@@ -52,11 +52,49 @@ producer.on('producer.network.request_timeout', (payload) => {
 });
 
 /**
+ * Ensures all required topics exist
+ * @param {string[]} topics - List of topics to check/create
+ */
+async function ensureTopicsExist(topics) {
+  try {
+    const admin = kafka.admin();
+    await admin.connect();
+
+    // Get list of existing topics
+    const existingTopics = await admin.listTopics();
+
+    // Filter out topics that don't exist
+    const missingTopics = topics.filter(topic => !existingTopics.includes(topic));
+
+    if (missingTopics.length > 0) {
+      logger.info(`Creating missing topics: ${missingTopics.join(', ')}`);
+
+      await admin.createTopics({
+        topics: missingTopics.map(topic => ({
+          topic,
+          numPartitions: 1,
+          replicationFactor: 1
+        }))
+      });
+    }
+
+    await admin.disconnect();
+  } catch (error) {
+    logger.error('Failed to ensure topics exist:', error);
+    throw error;
+  }
+}
+
+/**
  * Starts the Kafka producer.
  * @returns {Promise} A promise that resolves to the producer instance.
  */
 export async function startProducer() {
   try {
+    // Ensure topics exist before connecting producer
+    const topics = config.KAFKA_TOPICS.split(',').map(topic => topic.trim());
+    await ensureTopicsExist(topics);
+
     await producer.connect();
     logger.info(`Kafka producer connected to ${config.KAFKA_BROKER}`);
     return producer;
@@ -68,11 +106,11 @@ export async function startProducer() {
 
 /**
  * Sends a message to a Kafka topic.
- * @param {string} topic - The Kafka topic to send the message to.
- * @param {string|object} message - The message to send. Can be a string or an object.
- * @returns {Promise<boolean>} A promise that resolves to true if the message was sent successfully, false otherwise.
+ * @param {string} topics - Comma-separated list of Kafka topics
+ * @param {Object} message - The message to send
+ * @returns {Promise<boolean>} Success status
  */
-export async function sendToKafka(topic, message) {
+export async function sendToKafka(topics, message) {
   if (!isConnected) return false;
 
   try {
@@ -86,15 +124,21 @@ export async function sendToKafka(topic, message) {
     recentMessages.add(messageId);
     setTimeout(() => recentMessages.delete(messageId), MESSAGE_RETENTION);
 
-    await producer.send({
-      topic,
-      messages: [{
-        key: message.symbol,
-        value: JSON.stringify(message),
-        timestamp: Date.now()
-      }],
-      timeout: 1000
-    });
+    // Send to all configured topics
+    const topicList = topics.split(',').map(topic => topic.trim());
+
+    await Promise.all(topicList.map(topic =>
+      producer.send({
+        topic,
+        messages: [{
+          key: message.symbol,
+          value: JSON.stringify(message),
+          timestamp: Date.now()
+        }],
+        timeout: 1000
+      })
+    ));
+
     return true;
   } catch (error) {
     logger.error('Kafka send failed:', error);

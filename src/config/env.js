@@ -17,7 +17,7 @@ if (!fs.existsSync(envPath)) {
     const defaultEnv = `# Server configuration
 WS_PORT=8080
 KAFKA_BROKER=localhost:9092
-KAFKA_TOPIC=quotes.crypto
+KAFKA_TOPICS=quotes.crypto
 KAFKA_CLIENT_ID=market-data-service
 KAFKA_CONSUMER_GROUP=ws-consumers
 
@@ -75,10 +75,29 @@ function validateList(value, defaultValue, name) {
     return list;
 }
 
+function validateTopics(value, defaultValue, name) {
+    const topics = (value || defaultValue || '').split(',')
+        .map(topic => topic.trim())
+        .filter(Boolean);
+
+    if (topics.length === 0) {
+        throw new Error(`Missing required configuration: ${name}`);
+    }
+
+    // Validate topic names
+    topics.forEach(topic => {
+        if (!/^[a-zA-Z0-9._-]+$/.test(topic)) {
+            throw new Error(`Invalid topic name: ${topic}`);
+        }
+    });
+
+    return topics.join(',');
+}
+
 // Define configuration with validation
 const config = {
     KAFKA_BROKER: validateString(process.env.KAFKA_BROKER, 'localhost:9092', 'KAFKA_BROKER'),
-    KAFKA_TOPIC: validateString(process.env.KAFKA_TOPIC, 'quotes.crypto', 'KAFKA_TOPIC'),
+    KAFKA_TOPICS: validateTopics(process.env.KAFKA_TOPICS, 'quotes.crypto', 'KAFKA_TOPICS'),
     KAFKA_CLIENT_ID: validateString(process.env.KAFKA_CLIENT_ID, 'market-data-service', 'KAFKA_CLIENT_ID'),
     KAFKA_CONSUMER_GROUP: validateString(process.env.KAFKA_CONSUMER_GROUP, 'ws-consumers', 'KAFKA_CONSUMER_GROUP'),
     WS_PORT: validatePort(process.env.WS_PORT, 8080),

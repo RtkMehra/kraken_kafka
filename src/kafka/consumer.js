@@ -34,12 +34,16 @@ class KafkaConsumer {
       await this.consumer.connect();
       logger.info(`Kafka consumer connected to ${config.KAFKA_BROKER}`);
 
+      // Parse topics string into array
+      const topics = config.KAFKA_TOPICS.split(',').map(topic => topic.trim());
+
+      // Subscribe to all topics
       await this.consumer.subscribe({
-        topic: config.KAFKA_TOPIC,
+        topics,
         fromBeginning: false
       });
 
-      logger.info(`Subscribed to Kafka topic: ${config.KAFKA_TOPIC}`);
+      logger.info(`Subscribed to Kafka topics: ${topics.join(', ')}`);
 
       await this.consumer.run({
         autoCommit: false,
