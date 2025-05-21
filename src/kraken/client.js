@@ -2,7 +2,6 @@ import WebSocket from 'ws';
 import config from '../config/env.js';
 import logger from '../utils/logger.js';
 import { sendToKafka } from '../kafka/producer.js';
-import { broadcastToClients } from '../websocket/server.js';
 import { perfMonitor } from '../utils/performance.js';
 
 class KrakenClient {

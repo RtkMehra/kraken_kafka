@@ -1,7 +1,6 @@
 import { Kafka, Partitioners } from 'kafkajs';
 import config from '../config/env.js';
 import logger from '../utils/logger.js';
-import { formatMarketData } from '../utils/messageFormatter.js';
 
 // Kafka configuration
 const kafka = new Kafka({

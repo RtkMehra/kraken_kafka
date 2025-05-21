@@ -65,13 +65,41 @@ function handleClientMessage(ws, message) {
     const symbols = Array.isArray(data.symbols) ? data.symbols : [data.symbols];
 
     if (data.action === 'subscribe') {
-      updateSubscriptions(ws, symbols, true);
-      symbols.forEach(s => ws.subscriptions.add(s));
+      symbols.forEach(symbol => {
+        // Normalize symbol format
+        const normalizedSymbol = symbol.toUpperCase();
+
+        // Add to client's subscriptions
+        ws.subscriptions.add(normalizedSymbol);
+
+        // Add to symbol's subscriber list
+        let subscribers = subscriptionsBySymbol.get(normalizedSymbol);
+        if (!subscribers) {
+          subscribers = new Set();
+          subscriptionsBySymbol.set(normalizedSymbol, subscribers);
+        }
+        subscribers.add(ws);
+      });
+
+      logger.debug(`Client subscribed to: ${Array.from(ws.subscriptions).join(', ')}`);
     } else if (data.action === 'unsubscribe') {
-      updateSubscriptions(ws, symbols, false);
-      symbols.forEach(s => ws.subscriptions.delete(s));
+      symbols.forEach(symbol => {
+        const normalizedSymbol = symbol.toUpperCase();
+        ws.subscriptions.delete(normalizedSymbol);
+
+        const subscribers = subscriptionsBySymbol.get(normalizedSymbol);
+        if (subscribers) {
+          subscribers.delete(ws);
+          if (subscribers.size === 0) {
+            subscriptionsBySymbol.delete(normalizedSymbol);
+          }
+        }
+      });
+
+      logger.debug(`Client unsubscribed from: ${symbols.join(', ')}`);
     }
 
+    // Send confirmation
     ws.send(JSON.stringify({
       type: 'subscription',
       status: 'success',
@@ -79,10 +107,15 @@ function handleClientMessage(ws, message) {
     }));
   } catch (error) {
     logger.error('Subscription error:', error);
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: 'Invalid subscription request'
+    }));
   }
 }
 
 function handleClientDisconnect(ws) {
+  // Clean up all subscriptions for this client
   ws.subscriptions.forEach(symbol => {
     const subscribers = subscriptionsBySymbol.get(symbol);
     if (subscribers) {
@@ -95,7 +128,7 @@ function handleClientDisconnect(ws) {
 }
 
 /**
- * Broadcasts data to all connected WebSocket clients
+ * Broadcasts data to subscribed WebSocket clients
  * @param {Object} data - The market data to broadcast
  * @returns {Promise<number>} Number of clients the message was sent to
  */
@@ -121,40 +154,36 @@ export function broadcastToClients(data) {
       ask: Number(data.ask)
     });
 
+    // Get subscribers for this symbol
     const subscribers = subscriptionsBySymbol.get(data.symbol);
+    if (!subscribers || subscribers.size === 0) {
+      resolve(0);
+      return; // No subscribers for this symbol
+    }
+
     let sentCount = 0;
 
-    for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN &&
-        (!subscribers || subscribers.has(client))) {
+    // Only send to subscribed clients
+    for (const client of subscribers) {
+      if (client.readyState === WebSocket.OPEN) {
         try {
           client.send(message);
           sentCount++;
         } catch (error) {
           logger.error('Send failed:', error);
+          subscribers.delete(client); // Remove failed client
         }
+      } else {
+        subscribers.delete(client); // Clean up stale clients
       }
     }
 
+    // Clean up empty subscription sets
+    if (subscribers.size === 0) {
+      subscriptionsBySymbol.delete(data.symbol);
+    }
+
     resolve(sentCount);
-  });
-}
-
-// Update subscription tracking
-function updateSubscriptions(ws, symbols, isSubscribing) {
-  symbols.forEach(symbol => {
-    let subscribers = subscriptionsBySymbol.get(symbol);
-
-    if (!subscribers) {
-      subscribers = new Set();
-      subscriptionsBySymbol.set(symbol, subscribers);
-    }
-
-    if (isSubscribing) {
-      subscribers.add(ws);
-    } else {
-      subscribers.delete(ws);
-    }
   });
 }
 
